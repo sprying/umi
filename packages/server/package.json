@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@umijs/deps": "3.5.13",
-    "@umijs/utils": "3.5.13"
+    "@umijs/utils": "3.5.13",
+    "trusted-cert": "1.1.4-beta.2"
   }
 }

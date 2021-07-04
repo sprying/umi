@@ -3,31 +3,28 @@ import immer from '@umijs/deps/compiled/immer';
 import * as fs from 'fs';
 import { join } from 'path';
 import { IHttps, IServerOpts } from './Server';
+import certificateFor from 'trusted-cert';
 
 const logger = new Logger('@umijs/server:utils');
 
-export const getCredentials = (opts: IServerOpts): IHttps => {
-  const { https } = opts;
+export const getCredentials = async (opts: IServerOpts): Promise<IHttps> => {
+  const { https, host = 'localhost' } = opts;
+  const { keyFilePath, certFilePath } = await certificateFor(host, {
+    silent: true,
+  });
   const defautlServerOptions: IHttps = {
     key: join(__dirname, 'cert', 'key.pem'),
     cert: join(__dirname, 'cert', 'cert.pem'),
   };
   // custom cert using https: { key: '', cert: '' }
-  const serverOptions = (
-    https === true ? defautlServerOptions : https
-  ) as IHttps;
-  if (!serverOptions?.key || !serverOptions?.cert) {
-    const err = new Error(
-      `Both options.https.key and options.https.cert are required.`,
-    );
-    logger.error(err);
-    throw err;
-  }
+  const serverOptions = (https === true
+    ? defautlServerOptions
+    : https) as IHttps;
   const credentials = immer(
     {
       ...serverOptions,
-      key: fs.readFileSync(serverOptions?.key as string, 'utf-8'),
-      cert: fs.readFileSync(serverOptions?.cert as string, 'utf-8'),
+      key: fs.readFileSync(keyFilePath, 'utf-8'),
+      cert: fs.readFileSync(certFilePath, 'utf-8'),
     },
     (draft: any) => {
       if (typeof serverOptions === 'object' && serverOptions.ca) {

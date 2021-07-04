@@ -98,6 +98,7 @@ class Server {
   sockets: Connection[] = [];
   // Proxy sockets
   socketProxies: ProxyRequestHandler[] = [];
+  _waitingCreateServer: Promise<void>;
 
   constructor(opts: IServerOpts) {
     this.opts = {
@@ -106,18 +107,19 @@ class Server {
     };
     this.app = express();
     this.setupFeatures();
-    this.createServer();
-
-    this.socketProxies.forEach((wsProxy) => {
-      // subscribe to http 'upgrade'
-      // @ts-ignore
-      this.listeningApp.on('upgrade', wsProxy.upgrade);
-    }, this);
+    this._waitingCreateServer = this.createServer();
+    this._waitingCreateServer.then(() => {
+      this.socketProxies.forEach((wsProxy) => {
+        // subscribe to http 'upgrade'
+        // @ts-ignore
+        this.listeningApp.on('upgrade', wsProxy.upgrade);
+      }, this);
+    });
   }
 
-  private getHttpsOptions(): object | undefined {
+  private async getHttpsOptions(): Promise<object | undefined> {
     if (this.opts.https) {
-      const credential = getCredentials(this.opts);
+      const credential = await getCredentials(this.opts);
 
       // note that options.spdy never existed. The user was able
       // to set options.https.spdy before, though it was not in the
@@ -387,8 +389,8 @@ class Server {
     });
   }
 
-  createServer() {
-    const httpsOpts = this.getHttpsOptions();
+  async createServer() {
+    const httpsOpts = await this.getHttpsOptions();
     if (httpsOpts) {
       // http2 using spdy, HTTP/2 by default when using https
       this.listeningApp = spdy.createServer(httpsOpts, this.app);
@@ -411,16 +413,18 @@ class Server {
   }> {
     const foundPort = await portfinder.getPortPromise({ port });
     return new Promise((resolve) => {
-      this.listeningApp.listen(foundPort, hostname, 5, () => {
-        this.createSocketServer();
-        const ret = {
-          port: foundPort,
-          hostname,
-          listeningApp: this.listeningApp,
-          server: this,
-        };
-        this.opts.onListening(ret);
-        resolve(ret);
+      this._waitingCreateServer.then(() => {
+        this.listeningApp.listen(foundPort, hostname, 5, () => {
+          this.createSocketServer();
+          const ret = {
+            port: foundPort,
+            hostname,
+            listeningApp: this.listeningApp,
+            server: this,
+          };
+          this.opts.onListening(ret);
+          resolve(ret);
+        });
       });
     });
   }
